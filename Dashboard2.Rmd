@@ -1,0 +1,223 @@
+---
+title: "Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: bootstrap
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(faraway)
+library(ggplot2)
+library(shinyWidgets)
+```
+
+
+Banco e Perguntas
+=====================================
+
+**Banco de dados:**
+
+Dados envolvendo o preço de 414 casas na região no sul da cidade de Taipé, capital de Taiwan, entre 2012 e 2013.
+
+**Variáveis:**
+
+ + dia: Data de quando as informações foram extraídas.
+
+ + idade: Idade da casa.
+
+ + distancia: Distância entre a casa e a estação de metrô mais próxima.
+
+ + nlojas: Número de lojas de conveniência próximas a casa.
+
+ + latitude: Latitude da casa.
+
+ + longitude: Longitude da casa.
+
+ + preco: Preço da casa.
+
+**Perguntas:**
+
++ Qual o modelo geral (usando todas as variáveis) de regressão para prever o preço de uma casa?
+
+ + As suposições do modelo são válidas?
+
+ + Como melhorar esse modelo?
+
+ + Mesmo com as melhorias, quais problemas tem o modelo?
+
+ + Quais as possíveis soluções para esse problemas?
+
+Avaliação das correlações
+===========================================
+
+Inputs {.sidebar data-width=600}
+----------------------------------------------
+
+### Escolha os eixos: 
+```{r}
+selectInput("x", label = "Abscissa:", choice=list('dia', 'idade', 'distancia', 'nlojas', 'latitude', 'longitude','preco'))
+
+selectInput("y", label = "Ordenada:", choice=list('dia', 'idade', 'distancia', 'nlojas', 'latitude', 'longitude','preco'))
+
+```
+
+##### Correlação linear:
+```{r}
+renderPrint(round(cor(Real[[input$y]],Real[[input$x]]),2))
+
+```
+
+### Mátriz de correlação: 
+```{r}
+Real = read.csv('Real estate.csv')[2:8]
+colnames(Real) = c('dia','idade','distancia','nlojas','latitude','longitude','preco')
+renderPrint(round(cor(Real),2))
+
+```
+
+### Números de condição: 
+```{r}
+modelo1 = lm(preco~dia+idade+distancia+nlojas+latitude+longitude,data=Real)
+X = model.matrix(modelo1)[,-1]
+auto = sort((eigen(t(X) %*% X))$val)
+renderPrint(round(sqrt(max(auto)/auto)))
+
+```
+
+Row {data-height=800}
+-------------------------------------
+
+### Gráfico Interativo: Diagrama de Dispersão de Y versus X
+```{r}
+renderPlot({
+  ggplot(Real,aes(y = Real[[input$y]],x = Real[[input$x]]))+
+      geom_point()+
+      labs(x = input$x, y = input$y, 
+      title = paste('Disperção: ',input$x,' X ',input$y))+
+      theme_bw()})
+
+```
+
+Modelo geral e resíduos
+=================================
+
+Column {.sidebar data-width=600}
+----------------------------------------------
+
+### O modelo 
+```{r}
+renderPrint(summary(modelo1))
+
+```
+
+Column {.tabset}
+----------------------------------------------
+
+### Histograma dos resíduos
+```{r}
+renderPlot({hist(modelo1$residuals,xlab = 'Resíduos',ylab = 'Frequência', main = '')})
+
+```
+
+### Teste de normalidade dos resíduos
+```{r}
+renderPrint(shapiro.test(modelo1$residuals))
+
+```
+
+### Resíduos por tempo de observação
+```{r}
+renderPlot({plot(Real$dia,modelo1$residuals,xlab = 'Data',ylab = 'Resíduos', main = '')
+  abline(h=0,lty = 2)})
+
+```
+
+### Resíduos sucessivos
+```{r}
+renderPlot({plot(c(0,modelo1$residuals[1:413]),modelo1$residuals,xlab = 'Resíduos+1',ylab = 'Resíduos', 
+                 main = '')
+  abline(h=0,lty = 2)
+  abline(v=0,lty = 2)})
+
+```
+
+
+Indentificação de Outliers
+=================================
+
+Column {data-width=500}
+----------------------------------------------
+
+### Resíduos padronizados por tempo de observação
+```{r}
+renderPlot({plot(Real$dia,rstandard(modelo1),xlab = 'Data',ylab = 'Resíduos padronizados', main = '')
+  abline(h=0,lty = 2)})
+
+```
+
+
+Column {data-width=500}
+----------------------------------------------
+
+### Distância de Cook X Quantis normais
+```{r}
+cook = cooks.distance(modelo1)
+renderPlot({halfnorm(cook,3,ylab = 'Distância de Cook', main = '')})
+
+```
+
+Modelo melhorado
+=================================
+
+Row {data-height=500}
+----------------------------------------------
+
+### Melhorado
+```{r}
+modelo2 = lm(preco~idade+log(distancia)+nlojas+latitude,data=Real,subset=(cook < max(cook)))
+renderPrint(summary(modelo2))
+
+```
+
+Row {data-height=500}
+----------------------------------------------
+### Geral
+```{r}
+renderPrint(summary(modelo1))
+
+```
+
+Row {data-height=500}
+----------------------------------------------
+### Mudanças:
+
+ + A variável ‘dia’ foi retirada pela sua baixa correlação com a variável resposta.
+ 
+ + A variável ‘longitude’ foi retirada pela sua baixa significância pelo teste T e alta correlação com outras variáveis resposta.
+ 
+ + A observação 271 foi retirada por ser um outlier de alta influência no modelo.
+ 
+ + Foi aplicado a função log na variável ‘distancia’ para linearizar sua relação com a variável resposta.
+ 
+Com essas mudanças houve o aumento da significância de todas as variáveis restantes e um aumento de 0.1 no coeficiente de determinação.
+ 
+### Problemas:
+
+ + O modelo possuí ainda uma correlação relevante entre as variáveis resposta, o que diminui sua capacidade preditiva. Uma possível solução seria a combinação linear das variáveis com alta correlação.
+ 
+ + Outras variáveis possuem relações não-lineres com a variável resposta, que precisariam ou de um outro tipo de modelo ou alguma transformação mais complexa.
+ 
+ + O coeficiente de determinação, por mais que não seja baixo, também não é alto, indicando que mais informações seriam necessárias para inclusão de outras variáveis no modelo, aumentando a sua capacidade preditiva. 
+
+ + O outlier pode indicar problemas no modelo, seria necessário investigar a sua origem para garantir que a retirada não seja equivocada.
+
+Autor
+=================================
+
+Bernardo Souza Scaldaferri
+
+(31)99316.9678
+
+bscaldaferri02@gmail.com
